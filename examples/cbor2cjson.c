@@ -12,7 +12,7 @@
 #include "cbor.h"
 
 void usage(void) {
-  printf("Usage: cbor2cjson [input file]\n");
+  printf("Usage: cbor2cjson <input file> [offset]\n");
   exit(1);
 }
 
@@ -101,7 +101,9 @@ cJSON* cbor_to_cjson(cbor_item_t* item) {
  */
 
 int main(int argc, char* argv[]) {
-  if (argc != 2) usage();
+  if (argc < 2) usage();
+  size_t offset = 0;
+  if (argc > 2) offset = strtoull(argv[2], NULL, 0);
   FILE* f = fopen(argv[1], "rb");
   if (f == NULL) usage();
   fseek(f, 0, SEEK_END);
@@ -109,10 +111,18 @@ int main(int argc, char* argv[]) {
   fseek(f, 0, SEEK_SET);
   unsigned char* buffer = malloc(length);
   fread(buffer, length, 1, f);
+  fclose(f);
+
+  if (offset > length) {
+    fprintf(stderr, "offset %zu is larger than file %s %zu\n", offset, argv[1],
+            length);
+    free(buffer);
+    return -1;
+  }
 
   /* Assuming `buffer` contains `length` bytes of input data */
   struct cbor_load_result result;
-  cbor_item_t* item = cbor_load(buffer, length, &result);
+  cbor_item_t* item = cbor_load(&buffer[offset], length - offset, &result);
   free(buffer);
 
   if (result.error.code != CBOR_ERR_NONE) {
@@ -132,6 +142,4 @@ int main(int argc, char* argv[]) {
   /* Deallocate the result */
   cbor_decref(&item);
   cJSON_Delete(cjson_item);
-
-  fclose(f);
 }
