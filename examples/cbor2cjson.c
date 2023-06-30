@@ -23,9 +23,23 @@ cJSON* cbor_to_cjson(cbor_item_t* item) {
     case CBOR_TYPE_NEGINT:
       return cJSON_CreateNumber(-1 - cbor_get_int(item));
     case CBOR_TYPE_BYTESTRING:
-      // cJSON only handles null-terminated string -- binary data would have to
-      // be escaped
-      return cJSON_CreateString("Unsupported CBOR item: Bytestring");
+      if (cbor_bytestring_is_definite(item)) {
+        cbor_mutable_data data = cbor_bytestring_handle(item);
+        const size_t size = cbor_bytestring_length(item);
+        const size_t total = (size * 2) + 2;
+        char* null_terminated_string = calloc(total, sizeof(char));
+        null_terminated_string[0] = 'b';
+        for (size_t x = 0; x < size; x++) {
+          const size_t offset = 2 * x + 1;
+          unsigned cur = data[x];
+          snprintf(&null_terminated_string[offset], total - offset - 1, "%02X",
+                   cur);
+        }
+        cJSON* result = cJSON_CreateString(null_terminated_string);
+        free(null_terminated_string);
+        return result;
+      }
+      return cJSON_CreateString("Unsupported CBOR item: Chunked Bytestring");
     case CBOR_TYPE_STRING:
       if (cbor_string_is_definite(item)) {
         // cJSON only handles null-terminated string
