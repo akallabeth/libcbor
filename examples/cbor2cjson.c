@@ -62,27 +62,37 @@ cJSON* cbor_to_cjson(cbor_item_t* item) {
     case CBOR_TYPE_MAP: {
       cJSON* result = cJSON_CreateObject();
       for (size_t i = 0; i < cbor_map_size(item); i++) {
-        char* key = malloc(128);
-        snprintf(key, 128, "Surrogate key %zu", i);
+        struct cbor_pair* cur = &cbor_map_handle(item)[i];
+        char key[128] = {0};
+        snprintf(key, sizeof(key), "Surrogate key %zu", i);
         // JSON only support string keys
-        if (cbor_isa_string(cbor_map_handle(item)[i].key) &&
-            cbor_string_is_definite(cbor_map_handle(item)[i].key)) {
-          size_t key_length = cbor_string_length(cbor_map_handle(item)[i].key);
-          if (key_length > 127) key_length = 127;
+        if (cbor_isa_string(cur->key) && cbor_string_is_definite(cur->key)) {
+          size_t key_length = cbor_string_length(cur->key);
+          if (key_length >= sizeof(key)) key_length = sizeof(key) - 1;
           // Null-terminated madness
-          memcpy(key, cbor_string_handle(cbor_map_handle(item)[i].key),
-                 key_length);
+          memcpy(key, cbor_string_handle(cur->key), key_length);
           key[key_length] = 0;
         }
-
+        if (cbor_isa_uint(cur->key)) {
+          uint64_t val = cbor_get_int(cur->key);
+          snprintf(key, sizeof(key), "%llu", val);
+        }
         cJSON_AddItemToObject(result, key,
                               cbor_to_cjson(cbor_map_handle(item)[i].value));
-        free(key);
       }
       return result;
     }
-    case CBOR_TYPE_TAG:
-      return cJSON_CreateString("Unsupported CBOR item: Tag");
+    case CBOR_TYPE_TAG: {
+      char key[128] = {0};
+      uint64_t val = cbor_tag_value(item);
+      cbor_item_t* titem = cbor_tag_item(item);
+      cJSON* sub = cbor_to_cjson(titem);
+
+      snprintf(key, sizeof(key), "tag_%llu", val);
+      cJSON* result = cJSON_CreateObject();
+      cJSON_AddItemToObject(result, key, sub);
+      return result;
+    }
     case CBOR_TYPE_FLOAT_CTRL:
       if (cbor_float_ctrl_is_ctrl(item)) {
         if (cbor_is_bool(item)) return cJSON_CreateBool(cbor_get_bool(item));
